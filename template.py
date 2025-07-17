@@ -18,6 +18,9 @@ Response: {
 }
 """
 
+import time
+import uuid
+import requests
 from dataclasses import dataclass
 from typing import Optional, Dict
 from datetime import datetime
@@ -54,8 +57,9 @@ class AvatarProcessingService:
         """
         self.moderation_api_url = moderation_api_url
         self.api_token = api_token
+        self._jobs = {}
         # TODO: Initialize your storage, HTTP client, etc.
-        pass
+        #pass
 
     def submit_job(self, user_id: str, input_data: str) -> AvatarJob:
         """
@@ -76,7 +80,30 @@ class AvatarProcessingService:
         5. Store and return the job
         """
         # TODO: Implement job creation and full processing
-        pass
+        _job = AvatarJob(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                status="pending",  # pending, completed, failed, rejected
+                input_data=input_data,  # user's avatar prompt
+                output_url=self._generate_mock_avatar_url(input_data)
+        )
+        self._jobs[_job.id] = _job
+
+        try:
+            response = self.call_moderation_api(input_data, user_id)
+
+            if response.is_approved:
+                _job.status = "completed"
+                _job.error_message = None
+            else:
+                _job.status = "rejected"
+                _job.error_message = response.reason
+        except Exception as e:
+            _job.status = "failed"
+            _job.error_message = str(e)
+
+
+        return _job
 
     def get_job_status(self, job_id: str) -> Optional[AvatarJob]:
         """
@@ -88,8 +115,9 @@ class AvatarProcessingService:
         Returns:
             AvatarJob or None: The job object if found, None otherwise
         """
-        # TODO: Implement job retrieval from storage
-        pass
+        if job_id in self._jobs:
+            return self._jobs[job_id]
+        return None
 
     def call_moderation_api(self, content: str, user_id: str) -> ModerationResponse:
         """
@@ -109,7 +137,26 @@ class AvatarProcessingService:
         - Optional: Add simple retry logic
         """
         # TODO: Implement HTTP client call with error handling
-        pass
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+        }
+        
+        data = {
+            "content": content,
+            "user_id": user_id
+        }
+
+
+        response = requests.post(self.moderation_api_url, headers=headers, data=data)
+        response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
+
+        _body = response.json()
+        return ModerationResponse(
+            is_approved=_body["approved"],
+            reason=_body["reason"]
+        )
+
 
     def _generate_mock_avatar_url(self, prompt: str) -> str:
         """
@@ -122,7 +169,8 @@ class AvatarProcessingService:
             str: Mock URL to the generated avatar
         """
         # TODO: Return a unique mock URL like "https://avatars.example.com/avatar_123.png"
-        pass
+        # TODO: return partital hash
+        return f"https://avatars.example.com/{hash(prompt)}_{time.time()}.png"
 
 
 # Example usage and testing
